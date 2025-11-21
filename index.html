@@ -178,6 +178,10 @@
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
 </head>
 <body>
     <div class="container">
@@ -235,7 +239,121 @@
     </div>
 
     <script>
-        let estado = {
+        
+        // ===== CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE =====
+        const firebaseConfig = {
+            apiKey: "AIzaSyB7MLGd9NPYR41yXmUPBF24w1wqgVptzVo",
+            authDomain: "mundo-verde-f881a.firebaseapp.com",
+            projectId: "mundo-verde-f881a",
+            storageBucket: "mundo-verde-f881a.firebasestorage.app",
+            messagingSenderId: "342483025850",
+            appId: "1:342483025850:web:d2a27fb39975fcb6306783"
+        };
+        
+        // Inicializar Firebase
+        let db = null;
+        let firebaseIniciado = false;
+        
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            firebaseIniciado = true;
+            console.log('✅ Firebase conectado');
+        } catch (error) {
+            console.log('⚠️ Firebase no disponible, usando solo localStorage');
+            firebaseIniciado = false;
+        }
+        
+        // Función para sincronizar con Firebase
+        async function sincronizarConFirebase() {
+            if (!firebaseIniciado || !db) return;
+            
+            try {
+                const timestamp = new Date().toISOString();
+                ultimoCambioLocal = timestamp; // Marcar que este cambio es local
+                
+                const docRef = db.collection('mundoverde').doc('datos');
+                await docRef.set({
+                    trabajos: estado.trabajos,
+                    pagosTractoristas: estado.pagosTractoristas,
+                    gastosGenerales: estado.gastosGenerales,
+                    pagosEntreEmmaYPablo: estado.pagosEntreEmmaYPablo,
+                    lotes: estado.lotes,
+                    tractoristas: estado.tractoristas,
+                    actividades: estado.actividades,
+                    ultimaActualizacion: timestamp
+                }, { merge: true });
+                
+                console.log('✅ Datos sincronizados con Firebase');
+            } catch (error) {
+                console.error('Error al sincronizar:', error);
+            }
+        }
+        
+        // Función para cargar desde Firebase
+        async function cargarDesdeFirebase() {
+            if (!firebaseIniciado || !db) return false;
+            
+            try {
+                const docRef = db.collection('mundoverde').doc('datos');
+                const doc = await docRef.get();
+                
+                if (doc.exists) {
+                    const datos = doc.data();
+                    
+                    // Solo actualizar si hay datos en Firebase
+                    if (datos.trabajos) estado.trabajos = datos.trabajos;
+                    if (datos.pagosTractoristas) estado.pagosTractoristas = datos.pagosTractoristas;
+                    if (datos.gastosGenerales) estado.gastosGenerales = datos.gastosGenerales;
+                    if (datos.pagosEntreEmmaYPablo) estado.pagosEntreEmmaYPablo = datos.pagosEntreEmmaYPablo;
+                    if (datos.lotes) estado.lotes = datos.lotes;
+                    if (datos.tractoristas) estado.tractoristas = datos.tractoristas;
+                    if (datos.actividades) estado.actividades = datos.actividades;
+                    
+                    console.log('✅ Datos cargados desde Firebase');
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error('Error al cargar desde Firebase:', error);
+                return false;
+            }
+        }
+        
+        // Escuchar cambios en tiempo real
+        // Variable para trackear si este tab hizo el último cambio
+        let ultimoCambioLocal = null;
+        
+        function escucharCambiosFirebase() {
+            if (!firebaseIniciado || !db) return;
+            
+            db.collection('mundoverde').doc('datos').onSnapshot((doc) => {
+                if (doc.exists) {
+                    const datos = doc.data();
+                    
+                    // Si este cambio fue hecho por este tab, no actualizar
+                    if (datos.ultimaActualizacion === ultimoCambioLocal) {
+                        console.log('📝 Cambio hecho por esta pestaña, ignorando');
+                        return;
+                    }
+                    
+                    // Actualizar con los datos de Firebase
+                    if (datos.trabajos) estado.trabajos = datos.trabajos;
+                    if (datos.pagosTractoristas) estado.pagosTractoristas = datos.pagosTractoristas;
+                    if (datos.gastosGenerales) estado.gastosGenerales = datos.gastosGenerales;
+                    if (datos.pagosEntreEmmaYPablo) estado.pagosEntreEmmaYPablo = datos.pagosEntreEmmaYPablo;
+                    if (datos.lotes) estado.lotes = datos.lotes;
+                    if (datos.tractoristas) estado.tractoristas = datos.tractoristas;
+                    if (datos.actividades) estado.actividades = datos.actividades;
+                    
+                    localStorage.setItem('mundoverde_ultima_actualizacion', datos.ultimaActualizacion);
+                    guardarEnLocalStorage();
+                    renderizar();
+                    console.log('🔄 Datos actualizados desde otro dispositivo/pestaña');
+                }
+            });
+        }
+let estado = {
             tractoristas: ['Juan', 'Carlos', 'Miguel'],
             actividades: [
                 { nombre: 'Volteo', precio: 15000 },
@@ -255,40 +373,51 @@
         let tabActual = 'trabajo';
 
         function guardar() {
-            localStorage.setItem('mundoverde', JSON.stringify(estado));
-            actualizarStats();
+            guardarEnLocalStorage();
+            sincronizarConFirebase();
+        }
+        
+        function guardarEnLocalStorage() {
+            localStorage.setItem('mundoverde_trabajos', JSON.stringify(estado.trabajos));
+            localStorage.setItem('mundoverde_pagos', JSON.stringify(estado.pagosTractoristas));
+            localStorage.setItem('mundoverde_gastos', JSON.stringify(estado.gastosGenerales));
+            localStorage.setItem('mundoverde_balance', JSON.stringify(estado.pagosEntreEmmaYPablo));
+            localStorage.setItem('mundoverde_lotes', JSON.stringify(estado.lotes));
+            localStorage.setItem('mundoverde_tractoristas', JSON.stringify(estado.tractoristas));
+            localStorage.setItem('mundoverde_ultima_actualizacion', new Date().toISOString());
         }
 
-        function cargar() {
-            const datos = localStorage.getItem('mundoverde');
-            if (datos) {
-                const datosGuardados = JSON.parse(datos);
+        async function cargar() {
+            // Primero intentar cargar desde Firebase
+            const cargadoDesdeFirebase = await cargarDesdeFirebase();
+            
+            // Si no hay datos en Firebase, cargar desde localStorage
+            if (!cargadoDesdeFirebase) {
+                const trabajos = localStorage.getItem('mundoverde_trabajos');
+                const pagos = localStorage.getItem('mundoverde_pagos');
+                const gastos = localStorage.getItem('mundoverde_gastos');
+                const balance = localStorage.getItem('mundoverde_balance');
+                const lotes = localStorage.getItem('mundoverde_lotes');
+                const tractoristas = localStorage.getItem('mundoverde_tractoristas');
                 
-                // Merge inteligente de actividades: mantener precios personalizados pero asegurar que todas las actividades del código estén presentes
-                const actividadesBase = [
-                    { nombre: 'Volteo', precio: 15000 },
-                    { nombre: 'Rastrillado', precio: 12000 },
-                    { nombre: 'Rollos', precio: 3000 },
-                    { nombre: 'Otra actividad', precio: 0 }
-                ];
+                if (trabajos) estado.trabajos = JSON.parse(trabajos);
+                if (pagos) estado.pagosTractoristas = JSON.parse(pagos);
+                if (gastos) estado.gastosGenerales = JSON.parse(gastos);
+                if (balance) estado.pagosEntreEmmaYPablo = JSON.parse(balance);
+                if (lotes) estado.lotes = JSON.parse(lotes);
+                if (tractoristas) estado.tractoristas = JSON.parse(tractoristas);
                 
-                const actividadesMerged = actividadesBase.map(actBase => {
-                    const actGuardada = datosGuardados.actividades?.find(a => a.nombre === actBase.nombre);
-                    return actGuardada ? actGuardada : actBase;
-                });
-                
-                // Limpiar trabajos con valores NaN
-                const trabajosLimpios = (datosGuardados.trabajos || []).filter(t => {
-                    return !isNaN(t.cantidad) && !isNaN(t.precio) && t.cantidad > 0;
-                });
-                
-                // Cargar el resto de datos normalmente
-                estado = {
-                    ...datosGuardados,
-                    actividades: actividadesMerged,
-                    trabajos: trabajosLimpios
-                };
+                // Si hay datos en localStorage pero no en Firebase, sincronizar
+                if (trabajos || pagos || gastos) {
+                    sincronizarConFirebase();
+                }
+            } else {
+                // Guardar en localStorage también
+                guardarEnLocalStorage();
             }
+            
+            // Iniciar escucha de cambios en tiempo real
+            escucharCambiosFirebase();
         }
 
         function formatearNumero(num) {
